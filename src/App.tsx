@@ -12,7 +12,7 @@ const DEFAULT_FLOWERS = [
   {
     id: 'flower1',
     name: 'Bloem 1',
-    url: '/input_file_2.png',
+    url: 'https://placehold.co/200x200/white/666?text=Bloem+1',
     source: '',
     color: 'bg-white',
     textColor: 'text-stone-600'
@@ -20,7 +20,7 @@ const DEFAULT_FLOWERS = [
   {
     id: 'flower2',
     name: 'Bloem 2',
-    url: '/input_file_1.png',
+    url: 'https://placehold.co/200x200/white/666?text=Bloem+2',
     source: '',
     color: 'bg-purple-100',
     textColor: 'text-purple-700'
@@ -28,7 +28,7 @@ const DEFAULT_FLOWERS = [
   {
     id: 'flower3',
     name: 'Bloem 3',
-    url: '/input_file_0.png',
+    url: 'https://placehold.co/200x200/white/666?text=Bloem+3',
     source: '',
     color: 'bg-yellow-100',
     textColor: 'text-yellow-700'
@@ -36,7 +36,7 @@ const DEFAULT_FLOWERS = [
   {
     id: 'flower4',
     name: 'Bloem 4',
-    url: 'https://picsum.photos/seed/flower4/200',
+    url: 'https://placehold.co/200x200/white/666?text=Bloem+4',
     source: '',
     color: 'bg-pink-100',
     textColor: 'text-pink-700'
@@ -44,7 +44,7 @@ const DEFAULT_FLOWERS = [
   {
     id: 'flower5',
     name: 'Bloem 5',
-    url: 'https://picsum.photos/seed/flower5/200',
+    url: 'https://placehold.co/200x200/white/666?text=Bloem+5',
     source: '',
     color: 'bg-orange-100',
     textColor: 'text-orange-700'
@@ -54,6 +54,11 @@ const DEFAULT_FLOWERS = [
 // Helper component for flower images with fallback
 const FlowerImage = ({ flower, className = "" }: { flower: any, className?: string }) => {
   const [error, setError] = React.useState(false);
+
+  // Reset error state when the URL changes to allow retrying new URLs
+  useEffect(() => {
+    setError(false);
+  }, [flower?.url]);
 
   if (!flower) return null;
 
@@ -299,12 +304,18 @@ export default function App() {
       baseUrl = baseUrl.replace('ais-dev-', 'ais-pre-');
     }
 
+    const getAbsoluteUrl = (url: string) => {
+      if (url.startsWith('http')) return url;
+      const origin = baseUrl.split('?')[0].split('/').slice(0, 3).join('/');
+      return origin + (url.startsWith('/') ? '' : '/') + url;
+    };
+
     const params = new URLSearchParams();
-    params.set('f1', tempFlowers[0].url);
-    params.set('f2', tempFlowers[1].url);
-    params.set('f3', tempFlowers[2].url);
-    params.set('f4', tempFlowers[3].url);
-    params.set('f5', tempFlowers[4].url);
+    params.set('f1', getAbsoluteUrl(tempFlowers[0].url));
+    params.set('f2', getAbsoluteUrl(tempFlowers[1].url));
+    params.set('f3', getAbsoluteUrl(tempFlowers[2].url));
+    params.set('f4', getAbsoluteUrl(tempFlowers[3].url));
+    params.set('f5', getAbsoluteUrl(tempFlowers[4].url));
     params.set('n', tempPreFilled.toString());
     params.set('s', tempGridSize.toString());
     
@@ -517,6 +528,7 @@ export default function App() {
           onClick={() => {
             setTempFlowers([...flowers]);
             setTempPreFilled(preFilledCount);
+            setTempGridSize(gridSize);
             setShowSettings(true);
           }}
           className="fixed top-4 right-4 p-3 bg-white rounded-full shadow-md hover:bg-stone-50 transition-colors z-40 border-2 border-blue-200"
@@ -549,38 +561,37 @@ export default function App() {
               <div className="p-6 space-y-6 max-h-[70vh] overflow-y-auto">
                 {/* Image URLs */}
                 <div className="space-y-4">
-                  <h3 className="font-semibold text-stone-700">Afbeeldingen</h3>
+                  <div className="flex items-center justify-between">
+                    <h3 className="font-semibold text-stone-700">Afbeeldingen (URL's)</h3>
+                    <span className="text-[10px] bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full font-bold uppercase">Admin Only</span>
+                  </div>
+                  <p className="text-xs text-stone-500">Plak hier de directe weblinks naar je afbeeldingen. De wijzigingen zijn direct zichtbaar in de kleine voorbeelden.</p>
+                  
                   {tempFlowers.map((flower, idx) => (
                     <div key={flower.id} className="space-y-2 p-4 bg-stone-50 rounded-2xl border-2 border-stone-100">
-                      <div className="flex justify-between items-center">
-                        <label className="text-xs text-stone-500 font-bold uppercase tracking-wider">Bloem {idx + 1}</label>
-                        <div className="w-8 h-8 rounded-lg overflow-hidden border border-stone-200">
-                          <img src={flower.url} alt="" className="w-full h-full object-cover" />
+                      <div className="flex justify-between items-center mb-1">
+                        <label className="text-[10px] text-stone-400 font-bold uppercase tracking-wider">Afbeelding {idx + 1}</label>
+                        <div className="w-10 h-10 rounded-lg overflow-hidden border-2 border-white shadow-sm bg-white">
+                          <FlowerImage flower={flower} />
                         </div>
                       </div>
-                      <div className="flex gap-2">
-                        <div className="flex-1 space-y-2">
-                          <div className="flex gap-2">
-                            <input 
-                              type="text" 
-                              value={flower.url}
-                              onChange={(e) => {
-                                const newTemp = [...tempFlowers];
-                                newTemp[idx] = { ...newTemp[idx], url: e.target.value };
-                                setTempFlowers(newTemp);
-                              }}
-                              className="flex-1 p-2 bg-white border border-stone-200 rounded-lg text-sm outline-none focus:border-blue-400"
-                              placeholder="URL of upload..."
-                            />
-                            <button
-                              onClick={() => handleUrlUpload(idx, flower.url)}
-                              disabled={downloadingIdx === idx}
-                              title="Download en host deze afbeelding lokaal"
-                              className="bg-blue-100 text-blue-600 p-2 rounded-lg hover:bg-blue-200 transition-colors disabled:opacity-50"
-                            >
-                              {downloadingIdx === idx ? <Loader2 size={16} className="animate-spin" /> : <Download size={16} />}
-                            </button>
-                          </div>
+                      
+                      <div className="space-y-2">
+                        <div className="relative">
+                          <input 
+                            type="text" 
+                            value={flower.url}
+                            onChange={(e) => {
+                              const newTemp = [...tempFlowers];
+                              newTemp[idx] = { ...newTemp[idx], url: e.target.value };
+                              setTempFlowers(newTemp);
+                            }}
+                            className="w-full p-3 bg-white border border-stone-200 rounded-xl text-sm outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100 transition-all"
+                            placeholder="https://website.com/afbeelding.png"
+                          />
+                        </div>
+                        
+                        <div className="flex gap-2">
                           <input 
                             type="text" 
                             value={flower.source || ''}
@@ -589,22 +600,34 @@ export default function App() {
                               newTemp[idx] = { ...newTemp[idx], source: e.target.value };
                               setTempFlowers(newTemp);
                             }}
-                            className="w-full p-2 bg-white border border-stone-200 rounded-lg text-[10px] outline-none focus:border-blue-400 italic"
-                            placeholder="Bron van de afbeelding (URL of tekst)..."
+                            className="flex-1 p-2 bg-white/50 border border-stone-100 rounded-lg text-[10px] outline-none focus:border-blue-300 italic"
+                            placeholder="Bronvermelding (optioneel)..."
                           />
+                          
+                          <div className="flex gap-1">
+                            <button
+                              onClick={() => handleUrlUpload(idx, flower.url)}
+                              disabled={downloadingIdx === idx || !flower.url.startsWith('http')}
+                              title="Download naar eigen server (voor stabiliteit)"
+                              className="bg-blue-50 text-blue-600 p-2 rounded-lg hover:bg-blue-100 transition-colors disabled:opacity-30"
+                            >
+                              {downloadingIdx === idx ? <Loader2 size={16} className="animate-spin" /> : <Download size={16} />}
+                            </button>
+                            
+                            <label className="cursor-pointer bg-blue-50 text-blue-600 p-2 rounded-lg hover:bg-blue-100 transition-colors flex items-center justify-center">
+                              <input 
+                                type="file" 
+                                className="hidden" 
+                                accept="image/*"
+                                onChange={(e) => {
+                                  const file = e.target.files?.[0];
+                                  if (file) handleFileUpload(idx, file);
+                                }}
+                              />
+                              <Save size={16} />
+                            </label>
+                          </div>
                         </div>
-                        <label className="cursor-pointer bg-white border border-stone-200 hover:bg-stone-50 p-2 rounded-lg transition-colors flex items-center justify-center self-start">
-                          <input 
-                            type="file" 
-                            className="hidden" 
-                            accept="image/*"
-                            onChange={(e) => {
-                              const file = e.target.files?.[0];
-                              if (file) handleFileUpload(idx, file);
-                            }}
-                          />
-                          <Save size={16} className="text-stone-600" />
-                        </label>
                       </div>
                     </div>
                   ))}
