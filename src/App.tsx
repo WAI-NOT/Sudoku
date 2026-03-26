@@ -66,6 +66,7 @@ const FlowerImage = ({ flower, className = "" }: { flower: any, className?: stri
     <div className={`relative w-full h-full flex items-center justify-center ${className}`}>
       {!error ? (
         <img
+          key={flower.url}
           src={flower.url}
           alt={flower.name}
           className="w-full h-full object-cover p-1"
