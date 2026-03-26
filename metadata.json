@@ -1,0 +1,5 @@
+{
+  "name": "Sudoku",
+  "description": "Een interactieve 3x3 sudoku voor WAI-NOT.",
+  "requestFramePermissions": []
+}
