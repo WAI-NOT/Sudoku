@@ -3,6 +3,7 @@ import { createServer as createViteServer } from "vite";
 import path from "path";
 import multer from "multer";
 import fs from "fs";
+import axios from "axios";
 
 async function startServer() {
   const app = express();
@@ -96,6 +97,45 @@ async function startServer() {
     const filePath = `/uploads/${req.file.filename}`;
     console.log("File uploaded successfully:", filePath);
     res.json({ url: filePath });
+  });
+
+  // API Route to download an image from a URL and save it locally
+  app.post("/api/upload-url", async (req, res) => {
+    try {
+      const { url } = req.body;
+      if (!url) return res.status(400).json({ error: "No URL provided" });
+
+      const response = await axios({
+        url,
+        method: "GET",
+        responseType: "stream",
+      });
+
+      const contentType = response.headers["content-type"] || "";
+      let extension = ".jpg";
+      if (contentType.includes("png")) extension = ".png";
+      else if (contentType.includes("gif")) extension = ".gif";
+      else if (contentType.includes("webp")) extension = ".webp";
+      else if (contentType.includes("svg")) extension = ".svg";
+
+      const filename = `${Date.now()}-${Math.round(Math.random() * 1e9)}${extension}`;
+      const localPath = path.join(uploadDir, filename);
+      const writer = fs.createWriteStream(localPath);
+
+      response.data.pipe(writer);
+
+      writer.on("finish", () => {
+        res.json({ url: `/uploads/${filename}` });
+      });
+
+      writer.on("error", (err) => {
+        console.error("Error writing file:", err);
+        res.status(500).json({ error: "Failed to save image" });
+      });
+    } catch (error) {
+      console.error("Error downloading image from URL:", error);
+      res.status(500).json({ error: "Failed to download image" });
+    }
   });
 
   // Vite middleware for development

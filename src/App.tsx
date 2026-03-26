@@ -5,7 +5,7 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { CheckCircle2, RotateCcw, AlertCircle, Settings, X, Save } from 'lucide-react';
+import { CheckCircle2, RotateCcw, AlertCircle, Settings, X, Save, Download, Loader2 } from 'lucide-react';
 
 // Default flower definitions
 const DEFAULT_FLOWERS = [
@@ -139,6 +139,7 @@ export default function App() {
   const [preFilledCount, setPreFilledCount] = useState(3);
   const [showSettings, setShowSettings] = useState(false);
   const [isAdmin, setIsAdmin] = useState(false);
+  const [downloadingIdx, setDownloadingIdx] = useState<number | null>(null);
   
   const [grid, setGrid] = useState<(string | null)[][]>(Array(3).fill(null).map(() => Array(3).fill(null)));
   const [solution, setSolution] = useState<string[][]>([]);
@@ -333,6 +334,34 @@ export default function App() {
     }
   };
 
+  const handleUrlUpload = async (idx: number, url: string) => {
+    if (!url || !url.startsWith('http')) {
+      alert('Voer een geldige URL in die begint met http of https.');
+      return;
+    }
+    setDownloadingIdx(idx);
+    try {
+      const response = await fetch('/api/upload-url', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url }),
+      });
+      const data = await response.json();
+      if (data.url) {
+        const newTemp = [...tempFlowers];
+        newTemp[idx] = { ...newTemp[idx], url: data.url };
+        setTempFlowers(newTemp);
+      } else if (data.error) {
+        alert(`Fout: ${data.error}`);
+      }
+    } catch (err) {
+      console.error('URL upload failed:', err);
+      alert('Het downloaden van de afbeelding is mislukt. Controleer de URL.');
+    } finally {
+      setDownloadingIdx(null);
+    }
+  };
+
   const handleDragStart = (e: React.DragEvent, flowerId: string, sourceRow?: number, sourceCol?: number) => {
     e.dataTransfer.setData('flowerId', flowerId);
     if (sourceRow !== undefined && sourceCol !== undefined) {
@@ -481,7 +510,7 @@ export default function App() {
   };
 
   return (
-    <div className="min-h-screen bg-[#fdf6e3] font-sans text-stone-800 p-4 md:p-8 flex flex-col items-center justify-center relative">
+    <div className="min-h-screen bg-[#fdf6e3] font-sans text-stone-800 p-2 md:p-4 flex flex-col items-center justify-center relative overflow-hidden">
       {/* Settings Toggle - Only visible for admin */}
       {isAdmin && (
         <button 
@@ -531,17 +560,27 @@ export default function App() {
                       </div>
                       <div className="flex gap-2">
                         <div className="flex-1 space-y-2">
-                          <input 
-                            type="text" 
-                            value={flower.url}
-                            onChange={(e) => {
-                              const newTemp = [...tempFlowers];
-                              newTemp[idx] = { ...newTemp[idx], url: e.target.value };
-                              setTempFlowers(newTemp);
-                            }}
-                            className="w-full p-2 bg-white border border-stone-200 rounded-lg text-sm outline-none focus:border-blue-400"
-                            placeholder="URL of upload..."
-                          />
+                          <div className="flex gap-2">
+                            <input 
+                              type="text" 
+                              value={flower.url}
+                              onChange={(e) => {
+                                const newTemp = [...tempFlowers];
+                                newTemp[idx] = { ...newTemp[idx], url: e.target.value };
+                                setTempFlowers(newTemp);
+                              }}
+                              className="flex-1 p-2 bg-white border border-stone-200 rounded-lg text-sm outline-none focus:border-blue-400"
+                              placeholder="URL of upload..."
+                            />
+                            <button
+                              onClick={() => handleUrlUpload(idx, flower.url)}
+                              disabled={downloadingIdx === idx}
+                              title="Download en host deze afbeelding lokaal"
+                              className="bg-blue-100 text-blue-600 p-2 rounded-lg hover:bg-blue-200 transition-colors disabled:opacity-50"
+                            >
+                              {downloadingIdx === idx ? <Loader2 size={16} className="animate-spin" /> : <Download size={16} />}
+                            </button>
+                          </div>
                           <input 
                             type="text" 
                             value={flower.source || ''}
@@ -707,13 +746,14 @@ export default function App() {
         )}
       </AnimatePresence>
 
-      <main className="flex flex-col md:flex-row gap-8 items-center md:items-stretch justify-center w-full max-w-4xl">
+      <main className="flex flex-col md:flex-row gap-4 md:gap-8 items-center md:items-stretch justify-center w-full max-w-6xl px-2 md:px-4">
         {/* Sudoku Grid */}
-        <div className="bg-white p-4 rounded-2xl shadow-xl border-4 border-green-200 relative">
+        <div className="bg-white p-2 md:p-4 rounded-2xl shadow-xl border-4 border-[#00736d] relative w-full max-w-[min(95vw,80vh)] aspect-square flex items-center justify-center">
           <div 
-            className="grid gap-2 bg-green-100 p-2 rounded-lg"
+            className="grid gap-1 md:gap-2 bg-[#00736d] p-1 md:p-2 rounded-lg w-full h-full"
             style={{ 
-              gridTemplateColumns: `repeat(${gridSize}, minmax(0, 1fr))` 
+              gridTemplateColumns: `repeat(${gridSize}, minmax(0, 1fr))`,
+              gridTemplateRows: `repeat(${gridSize}, minmax(0, 1fr))`
             }}
           >
             {grid.map((row, rIdx) =>
@@ -731,23 +771,26 @@ export default function App() {
                     onDragOver={handleDragOver}
                     onClick={() => removeFlower(rIdx, cIdx)}
                     className={`
-                      w-16 h-16 md:w-24 md:h-24 rounded-xl flex items-center justify-center cursor-pointer transition-all duration-200
-                      ${isInitial ? 'bg-stone-100 cursor-default' : 'bg-white hover:bg-stone-50'}
-                      ${hasError && !isInitial ? 'ring-4 ring-red-400 bg-red-50' : 'border-2 border-stone-200'}
-                      relative overflow-hidden
+                      aspect-square w-full rounded-lg md:rounded-xl flex items-center justify-center cursor-pointer transition-all duration-200
+                      ${isInitial ? 'bg-stone-100 cursor-default' : 'bg-white hover:bg-stone-50 shadow-sm'}
+                      ${hasError && !isInitial ? 'ring-4 ring-red-400 bg-red-50' : 'border-2 border-stone-100'}
+                      relative overflow-hidden group
                     `}
                   >
                     {flower && (
                       <motion.div
                         initial={{ scale: 0.8, opacity: 0 }}
                         animate={{ scale: 1, opacity: 1 }}
-                        className="w-full h-full"
+                        className="w-full h-full p-0.5 md:p-1"
                       >
                         <FlowerImage flower={flower} />
                       </motion.div>
                     )}
                     {isInitial && (
-                      <div className="absolute top-1 left-1 w-3 h-3 bg-stone-300 rounded-full opacity-50" />
+                      <div className="absolute top-1 left-1 w-2.5 h-2.5 bg-stone-300 rounded-full opacity-40" />
+                    )}
+                    {!isInitial && !flower && (
+                      <div className="absolute inset-0 bg-blue-400/0 group-hover:bg-blue-400/5 transition-colors" />
                     )}
                   </div>
                 );
@@ -774,15 +817,16 @@ export default function App() {
         </div>
 
         {/* Flower Palette */}
-        <div className="flex flex-row md:flex-col gap-4 bg-white p-6 rounded-2xl shadow-lg border-4 border-blue-100 min-w-[150px] justify-center items-center">
+        <div className="bg-white p-2 md:p-4 rounded-2xl shadow-xl border-4 border-blue-200 flex flex-row md:flex-col gap-2 md:gap-4 items-center justify-center md:w-full md:max-w-[140px]">
           {flowers.slice(0, gridSize).map((flower) => (
             <div
               key={flower.id}
               draggable
               onDragStart={(e) => handleDragStart(e, flower.id)}
               className={`
-                w-16 h-16 md:w-20 md:h-20 rounded-xl border-2 border-stone-200 cursor-grab active:cursor-grabbing
-                hover:scale-105 transition-transform bg-white shadow-sm flex flex-col items-center justify-center p-1
+                aspect-square w-14 h-14 md:w-full md:h-auto bg-blue-50 rounded-xl border-2 border-transparent 
+                cursor-grab active:cursor-grabbing hover:scale-105 hover:bg-blue-100 hover:border-blue-300 
+                transition-all duration-200 shadow-sm flex items-center justify-center p-1.5 md:p-2
               `}
             >
               <FlowerImage flower={flower} />
@@ -796,7 +840,7 @@ export default function App() {
         <div className="flex gap-4">
           <button
             onClick={checkSudoku}
-            className="flex items-center gap-2 px-8 py-3 bg-green-600 hover:bg-green-700 text-white rounded-full font-bold text-xl shadow-lg hover:shadow-xl transition-all active:scale-95"
+            className="flex items-center gap-2 px-8 py-3 bg-[#00736d] hover:opacity-90 text-white rounded-full font-bold text-xl shadow-lg hover:shadow-xl transition-all active:scale-95"
           >
             <CheckCircle2 size={24} />
             Controleer
