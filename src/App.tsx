@@ -54,25 +54,52 @@ const DEFAULT_FLOWERS = [
 // Helper component for flower images with fallback
 const FlowerImage = ({ flower, className = "" }: { flower: any, className?: string }) => {
   const [error, setError] = React.useState(false);
+  const [loading, setLoading] = React.useState(true);
 
-  // Reset error state when the URL changes to allow retrying new URLs
+  // Upgrade http to https to avoid mixed content issues on secure platforms like Vercel
+  const getSafeUrl = (url: string) => {
+    if (!url) return '';
+    if (url.startsWith('http://')) {
+      return url.replace('http://', 'https://');
+    }
+    return url;
+  };
+
+  const safeUrl = getSafeUrl(flower?.url);
+
+  // Reset error state when the URL changes
   useEffect(() => {
     setError(false);
-  }, [flower?.url]);
+    setLoading(true);
+  }, [safeUrl]);
 
   if (!flower) return null;
 
   return (
-    <div className={`relative w-full h-full flex items-center justify-center ${className}`}>
+    <div 
+      className={`relative w-full h-full flex items-center justify-center overflow-hidden ${className}`}
+      style={{ width: '100%', height: '100%', minWidth: 0, minHeight: 0 }}
+    >
       {!error ? (
-        <img
-          key={flower.url}
-          src={flower.url}
-          alt={flower.name}
-          className="w-full h-full object-cover p-1"
-          referrerPolicy="no-referrer"
-          onError={() => setError(true)}
-        />
+        <>
+          {loading && (
+            <div className="absolute inset-0 flex items-center justify-center bg-stone-50 animate-pulse">
+              <Loader2 size={16} className="text-stone-300 animate-spin" />
+            </div>
+          )}
+          <img
+            key={safeUrl}
+            src={safeUrl}
+            alt={flower.name}
+            className={`w-full h-full object-cover p-1 transition-opacity duration-300 ${loading ? 'opacity-0' : 'opacity-100'}`}
+            referrerPolicy="no-referrer"
+            onLoad={() => setLoading(false)}
+            onError={() => {
+              setError(true);
+              setLoading(false);
+            }}
+          />
+        </>
       ) : (
         <div className={`w-full h-full flex items-center justify-center p-2 text-center text-[10px] font-bold leading-tight rounded-lg ${flower.color} ${flower.textColor || 'text-stone-800'}`}>
           {flower.name}
@@ -566,12 +593,19 @@ export default function App() {
                     <h3 className="font-semibold text-stone-700">Afbeeldingen (URL's)</h3>
                     <span className="text-[10px] bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full font-bold uppercase">Admin Only</span>
                   </div>
-                  <p className="text-xs text-stone-500">Plak hier de directe weblinks naar je afbeeldingen. De wijzigingen zijn direct zichtbaar in de kleine voorbeelden.</p>
+                  <p className="text-xs text-stone-500">Plak hier de directe weblinks naar je afbeeldingen. Gebruik bij voorkeur <strong>https://</strong> links voor een goede werking op Vercel/WAI-NOT.</p>
                   
                   {tempFlowers.map((flower, idx) => (
                     <div key={flower.id} className="space-y-2 p-4 bg-stone-50 rounded-2xl border-2 border-stone-100">
                       <div className="flex justify-between items-center mb-1">
-                        <label className="text-[10px] text-stone-400 font-bold uppercase tracking-wider">Afbeelding {idx + 1}</label>
+                        <div className="flex flex-col">
+                          <label className="text-[10px] text-stone-400 font-bold uppercase tracking-wider">Afbeelding {idx + 1}</label>
+                          {flower.url.startsWith('http://') && (
+                            <span className="text-[8px] text-red-500 font-bold flex items-center gap-0.5">
+                              <AlertCircle size={8} /> Onveilige link (http)
+                            </span>
+                          )}
+                        </div>
                         <div className="w-10 h-10 rounded-lg overflow-hidden border-2 border-white shadow-sm bg-white">
                           <FlowerImage flower={flower} />
                         </div>
@@ -788,7 +822,7 @@ export default function App() {
 
                 return (
                   <div
-                    key={`${rIdx}-${cIdx}`}
+                    key={`${rIdx}-${cIdx}-${flower?.url || 'empty'}`}
                     draggable={!isInitial && cell !== null}
                     onDragStart={(e) => cell && handleDragStart(e, cell, rIdx, cIdx)}
                     onDrop={(e) => handleDrop(e, rIdx, cIdx)}
@@ -805,7 +839,7 @@ export default function App() {
                       <motion.div
                         initial={{ scale: 0.8, opacity: 0 }}
                         animate={{ scale: 1, opacity: 1 }}
-                        className="w-full h-full p-0.5 md:p-1"
+                        className="absolute inset-0 p-0.5 md:p-1"
                       >
                         <FlowerImage flower={flower} />
                       </motion.div>
