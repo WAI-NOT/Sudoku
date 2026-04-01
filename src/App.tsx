@@ -5,14 +5,14 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { CheckCircle2, RotateCcw, AlertCircle, Settings, X, Save, Download, Loader2 } from 'lucide-react';
+import { CheckCircle2, RotateCcw, AlertCircle, Settings, X, Save, Download, Loader2, Copy, ExternalLink, Trash2, Edit3, ImageOff } from 'lucide-react';
 
 // Default flower definitions
 const DEFAULT_FLOWERS = [
   {
     id: 'flower1',
     name: 'Bloem 1',
-    url: 'https://placehold.co/200x200/white/666?text=Bloem+1',
+    url: 'https://picsum.photos/seed/flower1/200/200',
     source: '',
     color: 'bg-white',
     textColor: 'text-stone-600'
@@ -20,7 +20,7 @@ const DEFAULT_FLOWERS = [
   {
     id: 'flower2',
     name: 'Bloem 2',
-    url: 'https://placehold.co/200x200/white/666?text=Bloem+2',
+    url: 'https://picsum.photos/seed/flower2/200/200',
     source: '',
     color: 'bg-purple-100',
     textColor: 'text-purple-700'
@@ -28,7 +28,7 @@ const DEFAULT_FLOWERS = [
   {
     id: 'flower3',
     name: 'Bloem 3',
-    url: 'https://placehold.co/200x200/white/666?text=Bloem+3',
+    url: 'https://picsum.photos/seed/flower3/200/200',
     source: '',
     color: 'bg-yellow-100',
     textColor: 'text-yellow-700'
@@ -36,7 +36,7 @@ const DEFAULT_FLOWERS = [
   {
     id: 'flower4',
     name: 'Bloem 4',
-    url: 'https://placehold.co/200x200/white/666?text=Bloem+4',
+    url: 'https://picsum.photos/seed/flower4/200/200',
     source: '',
     color: 'bg-pink-100',
     textColor: 'text-pink-700'
@@ -44,7 +44,7 @@ const DEFAULT_FLOWERS = [
   {
     id: 'flower5',
     name: 'Bloem 5',
-    url: 'https://placehold.co/200x200/white/666?text=Bloem+5',
+    url: 'https://picsum.photos/seed/flower5/200/200',
     source: '',
     color: 'bg-orange-100',
     textColor: 'text-orange-700'
@@ -55,10 +55,14 @@ const DEFAULT_FLOWERS = [
 const FlowerImage = ({ flower, className = "" }: { flower: any, className?: string }) => {
   const [error, setError] = React.useState(false);
   const [loading, setLoading] = React.useState(true);
+  const [retryCount, setRetryCount] = React.useState(0);
+
+  const imgRef = useRef<HTMLImageElement>(null);
 
   // Upgrade http to https to avoid mixed content issues on secure platforms like Vercel
   const getSafeUrl = (url: string) => {
     if (!url) return '';
+    if (url.startsWith('data:') || url.startsWith('/') || url.startsWith('./')) return url;
     if (url.startsWith('http://')) {
       return url.replace('http://', 'https://');
     }
@@ -71,7 +75,11 @@ const FlowerImage = ({ flower, className = "" }: { flower: any, className?: stri
   useEffect(() => {
     setError(false);
     setLoading(true);
-  }, [safeUrl]);
+    // Check if image is already complete (cached)
+    if (imgRef.current?.complete) {
+      setLoading(false);
+    }
+  }, [safeUrl, retryCount]);
 
   if (!flower) return null;
 
@@ -88,7 +96,8 @@ const FlowerImage = ({ flower, className = "" }: { flower: any, className?: stri
             </div>
           )}
           <img
-            key={safeUrl}
+            key={`${safeUrl}-${retryCount}`}
+            ref={imgRef}
             src={safeUrl}
             alt={flower.name}
             className={`w-full h-full object-cover p-1 transition-opacity duration-300 ${loading ? 'opacity-0' : 'opacity-100'}`}
@@ -101,8 +110,18 @@ const FlowerImage = ({ flower, className = "" }: { flower: any, className?: stri
           />
         </>
       ) : (
-        <div className={`w-full h-full flex items-center justify-center p-2 text-center text-[10px] font-bold leading-tight rounded-lg ${flower.color} ${flower.textColor || 'text-stone-800'}`}>
-          {flower.name}
+        <div className={`w-full h-full flex flex-col items-center justify-center p-1 text-center rounded-lg ${flower.color} ${flower.textColor || 'text-stone-800'}`}>
+          <ImageOff size={14} className="mb-0.5 opacity-50" />
+          <span className="text-[9px] font-bold leading-tight line-clamp-2">{flower.name}</span>
+          <button 
+            onClick={(e) => {
+              e.stopPropagation();
+              setRetryCount(prev => prev + 1);
+            }}
+            className="mt-1 text-[8px] underline opacity-70 hover:opacity-100"
+          >
+            Opnieuw
+          </button>
         </div>
       )}
     </div>
@@ -189,6 +208,8 @@ export default function App() {
   const [savedConfigs, setSavedConfigs] = useState<SavedConfig[]>([]);
   const [configName, setConfigName] = useState('');
   const [isSaving, setIsSaving] = useState(false);
+  const [editingConfigId, setEditingConfigId] = useState<number | null>(null);
+  const [editingName, setEditingName] = useState('');
 
   const startNewGame = (currentFlowers = flowers, currentCount = preFilledCount, size = gridSize) => {
     const { solution: newSolution, initialGrid: newInitial } = generatePuzzle(currentFlowers, currentCount, size);
@@ -277,44 +298,137 @@ export default function App() {
     }
   };
 
+  const renameConfig = async (id: number) => {
+    if (!editingName.trim()) return;
+    try {
+      const response = await fetch(`/api/rename-config/${id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: editingName })
+      });
+      if (response.ok) {
+        setEditingConfigId(null);
+        loadSavedConfigs();
+      }
+    } catch (error) {
+      console.error('Error renaming config:', error);
+      alert('Fout bij het hernoemen.');
+    }
+  };
+
+  const getShareUrl = (config?: SavedConfig, type: 'user' | 'admin' = 'user') => {
+    let baseUrl = window.location.origin + window.location.pathname;
+    
+    if (baseUrl.includes('ais-dev-')) {
+      baseUrl = baseUrl.replace('ais-dev-', 'ais-pre-');
+    }
+
+    const params = new URLSearchParams();
+    if (type === 'admin') params.set('admin', 'true');
+
+    if (config) {
+      params.set('f1', config.flowers[0].url);
+      params.set('f2', config.flowers[1].url);
+      params.set('f3', config.flowers[2].url);
+      params.set('f4', config.flowers[3].url);
+      params.set('f5', config.flowers[4].url);
+      params.set('n', config.preFilledCount.toString());
+      params.set('s', config.gridSize.toString());
+    } else {
+      params.set('f1', flowers[0].url);
+      params.set('f2', flowers[1].url);
+      params.set('f3', flowers[2].url);
+      params.set('f4', flowers[3].url);
+      params.set('f5', flowers[4].url);
+      params.set('n', preFilledCount.toString());
+      params.set('s', gridSize.toString());
+    }
+    
+    return `${baseUrl}?${params.toString()}`;
+  };
+
+  const copyToClipboard = (text: string, message: string) => {
+    navigator.clipboard.writeText(text);
+    alert(message);
+  };
+
   // Initialize game and check URL params
   useEffect(() => {
     audioRef.current = new Audio('https://assets.mixkit.co/active_storage/sfx/2013/2013-preview.mp3');
     
-    const params = new URLSearchParams(window.location.search);
-    
-    // Check if user is admin
-    if (params.get('admin') === 'true') {
-      setIsAdmin(true);
-    }
+    const initializeGame = async () => {
+      const params = new URLSearchParams(window.location.search);
+      
+      // Check if user is admin
+      if (params.get('admin') === 'true') {
+        setIsAdmin(true);
+      }
 
-    // Load settings from URL if present
-    const f1 = params.get('f1');
-    const f2 = params.get('f2');
-    const f3 = params.get('f3');
-    const f4 = params.get('f4');
-    const f5 = params.get('f5');
-    const n = params.get('n');
-    const s = params.get('s');
+      // Load settings from URL if present
+      const f1 = params.get('f1');
+      const f2 = params.get('f2');
+      const f3 = params.get('f3');
+      const f4 = params.get('f4');
+      const f5 = params.get('f5');
+      const n = params.get('n');
+      const s = params.get('s');
 
-    let initialFlowers = [...DEFAULT_FLOWERS];
-    if (f1) initialFlowers[0] = { ...initialFlowers[0], url: f1 };
-    if (f2) initialFlowers[1] = { ...initialFlowers[1], url: f2 };
-    if (f3) initialFlowers[2] = { ...initialFlowers[2], url: f3 };
-    if (f4) initialFlowers[3] = { ...initialFlowers[3], url: f4 };
-    if (f5) initialFlowers[4] = { ...initialFlowers[4], url: f5 };
-    
-    const initialCount = n ? parseInt(n) : 3;
-    const initialSize = s ? parseInt(s) : 3;
+      let initialFlowers = [...DEFAULT_FLOWERS];
+      let initialCount = n ? parseInt(n) : 3;
+      let initialSize = s ? parseInt(s) : 3;
 
-    setFlowers(initialFlowers);
-    setGridSize(initialSize);
-    setPreFilledCount(initialCount);
-    setTempFlowers(initialFlowers);
-    setTempPreFilled(initialCount);
-    setTempGridSize(initialSize);
-    
-    startNewGame(initialFlowers, initialCount, initialSize);
+      const hasUrlParams = f1 || f2 || f3 || f4 || f5 || n || s;
+
+      // If no URL params, try to load the latest saved config for everyone
+      if (!hasUrlParams) {
+        try {
+          const response = await fetch('/api/load-configs');
+          if (response.ok) {
+            const configs = await response.json();
+            if (configs && configs.length > 0) {
+              // Use the most recent config
+              const latest = configs[configs.length - 1];
+              initialFlowers = latest.flowers;
+              initialSize = latest.gridSize || 3;
+              initialCount = latest.preFilledCount;
+              
+              // If it's a specific saved state, we can load it fully
+              setFlowers(initialFlowers);
+              setGridSize(initialSize);
+              setPreFilledCount(initialCount);
+              setInitialGridState(latest.initialGridState);
+              setGrid(latest.initialGridState);
+              setSolution(latest.solution);
+              setTempFlowers(initialFlowers);
+              setTempPreFilled(initialCount);
+              setTempGridSize(initialSize);
+              setErrors(Array(initialSize).fill(null).map(() => Array(initialSize).fill(false)));
+              return; // Exit early as we've fully initialized
+            }
+          }
+        } catch (error) {
+          console.error('Error loading default config:', error);
+        }
+      }
+
+      // Standard initialization from URL or defaults
+      if (f1) initialFlowers[0] = { ...initialFlowers[0], url: f1 };
+      if (f2) initialFlowers[1] = { ...initialFlowers[1], url: f2 };
+      if (f3) initialFlowers[2] = { ...initialFlowers[2], url: f3 };
+      if (f4) initialFlowers[3] = { ...initialFlowers[3], url: f4 };
+      if (f5) initialFlowers[4] = { ...initialFlowers[4], url: f5 };
+      
+      setFlowers(initialFlowers);
+      setGridSize(initialSize);
+      setPreFilledCount(initialCount);
+      setTempFlowers(initialFlowers);
+      setTempPreFilled(initialCount);
+      setTempGridSize(initialSize);
+      
+      startNewGame(initialFlowers, initialCount, initialSize);
+    };
+
+    initializeGame();
   }, []);
 
   const saveSettings = () => {
@@ -439,7 +553,7 @@ export default function App() {
       newGrid[row][col] = flowerId;
       setGrid(newGrid);
       setStatus('playing');
-      setErrors(Array(3).fill(null).map(() => Array(3).fill(false)));
+      setErrors(Array(gridSize).fill(null).map(() => Array(gridSize).fill(false)));
     }
   };
 
@@ -739,24 +853,78 @@ export default function App() {
                       <p className="text-sm text-stone-400 italic">Geen opgeslagen versies gevonden.</p>
                     ) : (
                       savedConfigs.map((config) => (
-                        <div key={config.id} className="flex justify-between items-center p-3 bg-stone-50 rounded-xl border border-stone-100">
-                          <div>
-                            <p className="font-bold text-sm text-stone-700">{config.name}</p>
-                            <p className="text-[10px] text-stone-400">{new Date(config.date).toLocaleString()}</p>
+                        <div key={config.id} className="p-3 bg-stone-50 rounded-xl border border-stone-100 space-y-3">
+                          <div className="flex justify-between items-start">
+                            <div className="flex-1 mr-2">
+                              {editingConfigId === config.id ? (
+                                <div className="flex gap-1">
+                                  <input 
+                                    type="text" 
+                                    value={editingName}
+                                    onChange={(e) => setEditingName(e.target.value)}
+                                    className="flex-1 p-1 text-sm border border-blue-300 rounded outline-none"
+                                    autoFocus
+                                  />
+                                  <button onClick={() => renameConfig(config.id)} className="p-1 text-green-600 hover:bg-green-50 rounded">
+                                    <Save size={16} />
+                                  </button>
+                                  <button onClick={() => setEditingConfigId(null)} className="p-1 text-red-600 hover:bg-red-50 rounded">
+                                    <X size={16} />
+                                  </button>
+                                </div>
+                              ) : (
+                                <div className="flex items-center gap-2">
+                                  <p className="font-bold text-sm text-stone-700">{config.name}</p>
+                                  <button 
+                                    onClick={() => {
+                                      setEditingConfigId(config.id);
+                                      setEditingName(config.name);
+                                    }}
+                                    className="text-stone-400 hover:text-blue-600 transition-colors"
+                                  >
+                                    <Edit3 size={12} />
+                                  </button>
+                                </div>
+                              )}
+                              <p className="text-[10px] text-stone-400">{new Date(config.date).toLocaleString()}</p>
+                            </div>
+                            <div className="flex gap-1">
+                              <button 
+                                onClick={() => loadConfig(config)}
+                                className="bg-blue-600 text-white px-2 py-1 rounded font-bold text-[10px] hover:bg-blue-700 transition-colors"
+                              >
+                                Laden
+                              </button>
+                              <button 
+                                onClick={() => deleteConfig(config.id)}
+                                className="bg-red-100 text-red-700 p-1 rounded hover:bg-red-200 transition-colors"
+                              >
+                                <Trash2 size={14} />
+                              </button>
+                            </div>
                           </div>
-                          <div className="flex gap-2">
+                          
+                          <div className="flex gap-2 pt-1 border-t border-stone-200/50">
                             <button 
-                              onClick={() => loadConfig(config)}
-                              className="bg-blue-100 text-blue-700 px-3 py-1 rounded-lg font-bold text-xs hover:bg-blue-200 transition-colors"
+                              onClick={() => copyToClipboard(getShareUrl(config, 'user'), 'Gebruikerslink gekopieerd!')}
+                              className="flex-1 flex items-center justify-center gap-1.5 py-1.5 bg-white border border-stone-200 rounded-lg text-[10px] font-bold text-stone-600 hover:bg-stone-100 transition-all"
                             >
-                              Laden
+                              <Copy size={12} /> Gebruiker
                             </button>
                             <button 
-                              onClick={() => deleteConfig(config.id)}
-                              className="bg-red-100 text-red-700 px-3 py-1 rounded-lg font-bold text-xs hover:bg-red-200 transition-colors"
+                              onClick={() => copyToClipboard(getShareUrl(config, 'admin'), 'Adminlink gekopieerd!')}
+                              className="flex-1 flex items-center justify-center gap-1.5 py-1.5 bg-white border border-stone-200 rounded-lg text-[10px] font-bold text-stone-600 hover:bg-stone-100 transition-all"
                             >
-                              Verwijder
+                              <Settings size={12} /> Admin
                             </button>
+                            <a 
+                              href={getShareUrl(config, 'user')} 
+                              target="_blank" 
+                              rel="noopener noreferrer"
+                              className="flex items-center justify-center p-1.5 bg-blue-50 text-blue-600 rounded-lg hover:bg-blue-100 transition-all"
+                            >
+                              <ExternalLink size={14} />
+                            </a>
                           </div>
                         </div>
                       ))
@@ -766,12 +934,22 @@ export default function App() {
               </div>
 
               <div className="p-6 bg-stone-50 border-t border-stone-100 flex flex-col gap-3">
-                <button 
-                  onClick={copyShareLink}
-                  className="w-full flex items-center justify-center gap-2 bg-blue-600 hover:bg-blue-700 text-white py-3 rounded-2xl font-bold shadow-md transition-all active:scale-95"
-                >
-                  Deel-link kopiëren
-                </button>
+                <div className="grid grid-cols-2 gap-2">
+                  <button 
+                    onClick={() => copyToClipboard(getShareUrl(undefined, 'user'), 'Publieke deel-link gekopieerd!')}
+                    className="flex items-center justify-center gap-2 bg-stone-200 hover:bg-stone-300 text-stone-700 py-3 rounded-2xl font-bold transition-all active:scale-95"
+                  >
+                    <Copy size={18} /> Deel-link
+                  </button>
+                  <a 
+                    href={getShareUrl(undefined, 'user')}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex items-center justify-center gap-2 bg-blue-100 hover:bg-blue-200 text-blue-700 py-3 rounded-2xl font-bold transition-all active:scale-95"
+                  >
+                    <ExternalLink size={18} /> Bekijk als gebruiker
+                  </a>
+                </div>
                 <div className="flex gap-2">
                   <button 
                     onClick={() => {

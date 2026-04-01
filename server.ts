@@ -63,6 +63,32 @@ async function startServer() {
     }
   });
 
+  // API Route to rename a configuration
+  app.put("/api/rename-config/:id", (req, res) => {
+    try {
+      const { id } = req.params;
+      const { name } = req.body;
+      if (!name) return res.status(400).json({ error: "Name is required" });
+
+      if (fs.existsSync(configPath)) {
+        let configs = JSON.parse(fs.readFileSync(configPath, "utf-8"));
+        const configIndex = configs.findIndex((c: any) => c.id === parseInt(id));
+        if (configIndex > -1) {
+          configs[configIndex].name = name;
+          fs.writeFileSync(configPath, JSON.stringify(configs, null, 2));
+          res.json({ success: true });
+        } else {
+          res.status(404).json({ error: "Configuration not found" });
+        }
+      } else {
+        res.status(404).json({ error: "No configurations found" });
+      }
+    } catch (error) {
+      console.error("Error renaming config:", error);
+      res.status(500).json({ error: "Failed to rename configuration" });
+    }
+  });
+
   // Ensure uploads directory exists
   const uploadDir = path.join(process.cwd(), "uploads");
   if (!fs.existsSync(uploadDir)) {
